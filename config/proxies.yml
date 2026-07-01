@@ -1,0 +1,6 @@
+glean:
+  target: https://cribl-be.glean.com
+  timeout: 30000
+  allowedPaths:
+    - /api/
+    - /mcp/

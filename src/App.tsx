@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import DiscoveryPage from './pages/DiscoveryPage';
 import SnapshotPage from './pages/SnapshotPage';
@@ -15,7 +15,7 @@ function App() {
   const [snapshot, setSnapshot] = useState<MaturitySnapshot | null>(null);
 
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<DiscoveryPage onDiscoveryComplete={setSnapshot} existingSnapshot={snapshot} />} />
@@ -28,7 +28,7 @@ function App() {
           <Route path="deliverables" element={<DeliverablesPage snapshot={snapshot} />} />
         </Route>
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 

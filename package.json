@@ -1,8 +1,8 @@
 {
-  "name": "telemetry-maturity",
+  "name": "TARW-TEST2",
   "private": true,
   "version": "1.1.0",
-  "displayName": "Telemetry Architecture Review",
+  "displayName": "TARW-TEST2",
   "description": "Assess customer telemetry maturity, identify risks, and quantify value from Cribl investment",
   "type": "module",
   "scripts": {

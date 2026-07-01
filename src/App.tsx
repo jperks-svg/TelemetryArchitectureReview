@@ -6,12 +6,13 @@ import SnapshotPage from './pages/SnapshotPage';
 import RisksPage from './pages/RisksPage';
 import RecommendationsPage from './pages/RecommendationsPage';
 import OpportunitiesPage from './pages/OpportunitiesPage';
+import ValuePage from './pages/ValuePage';
 import MaturityPage from './pages/MaturityPage';
 import DeliverablesPage from './pages/DeliverablesPage';
-import type { ArchitectureSnapshot } from './types';
+import type { MaturitySnapshot } from './types';
 
 function App() {
-  const [snapshot, setSnapshot] = useState<ArchitectureSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<MaturitySnapshot | null>(null);
 
   return (
     <BrowserRouter>
@@ -22,6 +23,7 @@ function App() {
           <Route path="risks" element={<RisksPage snapshot={snapshot} />} />
           <Route path="recommendations" element={<RecommendationsPage snapshot={snapshot} />} />
           <Route path="opportunities" element={<OpportunitiesPage snapshot={snapshot} />} />
+          <Route path="value" element={<ValuePage snapshot={snapshot} />} />
           <Route path="maturity" element={<MaturityPage snapshot={snapshot} />} />
           <Route path="deliverables" element={<DeliverablesPage snapshot={snapshot} />} />
         </Route>

@@ -1,12 +1,10 @@
-import { useMemo } from 'react';
 import { AlertTriangle, Shield, DollarSign, Zap, Search, Database, RefreshCw } from 'lucide-react';
 import Card from '../components/Card';
 import SeverityBadge from '../components/SeverityBadge';
-import { identifyRisks } from '../utils/analysis';
-import type { ArchitectureSnapshot, Risk } from '../types';
+import type { MaturitySnapshot, Risk } from '../types';
 
 interface Props {
-  snapshot: ArchitectureSnapshot | null;
+  snapshot: MaturitySnapshot | null;
 }
 
 const CATEGORY_ICONS: Record<string, typeof AlertTriangle> = {
@@ -16,7 +14,7 @@ const CATEGORY_ICONS: Record<string, typeof AlertTriangle> = {
   investigation: Search,
   retention: Database,
   resilience: RefreshCw,
-  upgrade: RefreshCw,
+  optimization: RefreshCw,
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -26,15 +24,10 @@ const CATEGORY_LABELS: Record<string, string> = {
   investigation: 'Investigation Capability',
   retention: 'Retention & Compliance',
   resilience: 'Resilience',
-  upgrade: 'Upgrade Posture',
+  optimization: 'Optimization',
 };
 
 export default function RisksPage({ snapshot }: Props) {
-  const risks = useMemo(() => {
-    if (!snapshot) return [];
-    return identifyRisks(snapshot);
-  }, [snapshot]);
-
   if (!snapshot) {
     return (
       <div className="page">
@@ -46,6 +39,7 @@ export default function RisksPage({ snapshot }: Props) {
     );
   }
 
+  const { risks } = snapshot;
   const highRisks = risks.filter(r => r.severity === 'high');
   const medRisks = risks.filter(r => r.severity === 'medium');
   const lowRisks = risks.filter(r => r.severity === 'low');
@@ -55,9 +49,8 @@ export default function RisksPage({ snapshot }: Props) {
       <div className="page-header">
         <h1>Risk Analysis</h1>
         <p className="page-description">
-          Identified architectural risks based on your current telemetry configuration.
-          These align to the TARW workshop's core risk themes: single-destination dependency, cost trajectory,
-          flexibility limitations, and investigation friction.
+          Identified risks based on {snapshot.customer.customerName}'s telemetry metrics and product adoption.
+          These align to core risk themes: single-destination dependency, cost trajectory, and investigation friction.
         </p>
       </div>
 
@@ -80,7 +73,7 @@ export default function RisksPage({ snapshot }: Props) {
         <Card className="mt-4">
           <div className="empty-state">
             <h3>No Significant Risks Detected</h3>
-            <p>Your architecture appears well-diversified. Consider running a deeper review during the workshop to validate.</p>
+            <p>Architecture appears well-diversified. Consider a deeper review during a workshop to validate.</p>
           </div>
         </Card>
       ) : (
@@ -91,10 +84,9 @@ export default function RisksPage({ snapshot }: Props) {
         </div>
       )}
 
-      <Card title="Workshop Discussion Prompts" className="mt-4">
+      <Card title="Discussion Prompts" className="mt-4">
         <p className="text-muted mb-3">
-          Use these prompts during the workshop to guide the risk discussion. The goal is for the customer
-          to articulate these risks in their own words.
+          Use these prompts during customer conversations to contextualize identified risks.
         </p>
         <div className="discussion-prompts">
           {highRisks.length > 0 && (
@@ -102,7 +94,7 @@ export default function RisksPage({ snapshot }: Props) {
               <h4>Single-Destination & Cost Risks</h4>
               <ul>
                 <li>"Walk me through what happens if your primary destination is degraded or unavailable."</li>
-                <li>"How has your telemetry cost changed over the last 2-3 years? What are you expecting next year?"</li>
+                <li>"How has your telemetry cost changed over the last 2-3 years?"</li>
                 <li>"How easy is it today to try a new tool or switch vendors?"</li>
               </ul>
             </div>
@@ -113,7 +105,6 @@ export default function RisksPage({ snapshot }: Props) {
               <ul>
                 <li>"In your last major incident, where did you spend the most time waiting on data?"</li>
                 <li>"How many tools are typically involved in an investigation?"</li>
-                <li>"Do teams ever re-ingest data to troubleshoot?"</li>
               </ul>
             </div>
           )}
@@ -123,18 +114,9 @@ export default function RisksPage({ snapshot }: Props) {
               <ul>
                 <li>"Where are you forced to drop data or shorten retention because of cost?"</li>
                 <li>"Have investigations ever failed due to missing historical data?"</li>
-                <li>"What retention guarantees exist today, and what happens when limits are hit?"</li>
               </ul>
             </div>
           )}
-          <div className="prompt-section">
-            <h4>Architecture Maturity</h4>
-            <ul>
-              <li>"How often do you have to re-onboard sources or re-build integrations when tools change?"</li>
-              <li>"Which pipelines are considered 'do not touch' and why?"</li>
-              <li>"How are pipeline changes tested? What's the rollback process?"</li>
-            </ul>
-          </div>
         </div>
       </Card>
     </div>

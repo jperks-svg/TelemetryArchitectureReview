@@ -1,18 +1,13 @@
-import type { ArchitectureSnapshot, CriblGroup, TelemetrySource, TelemetryDestination, DataFlow } from '../types';
+import type { CustomerTelemetry } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
-interface OmniDiscoveryResponse {
-  customerName: string;
-  results: Record<string, { text?: string; message?: string; error?: string }>;
-}
-
-export async function discoverArchitecture(
+export async function discoverCustomer(
   customerName: string,
   onProgress?: (message: string) => void
-): Promise<ArchitectureSnapshot> {
-  onProgress?.(`Starting discovery for customer: ${customerName}...`);
-  onProgress?.('Querying Omni via Glean for architecture data...');
+): Promise<CustomerTelemetry> {
+  onProgress?.(`Starting discovery for: ${customerName}...`);
+  onProgress?.('Querying Omni via Glean for telemetry data...');
 
   const res = await fetch(`${API_BASE}/api/discover`, {
     method: 'POST',
@@ -25,287 +20,141 @@ export async function discoverArchitecture(
     throw new Error(err.error || `Discovery failed: ${res.status}`);
   }
 
-  const data: OmniDiscoveryResponse = await res.json();
+  const data = await res.json();
+  onProgress?.('Parsing telemetry response...');
 
-  onProgress?.('Parsing groups and fleets...');
-  const groups = parseGroups(data.results.groups);
-
-  onProgress?.('Parsing sources...');
-  const sources = parseSources(data.results.sources, groups);
-
-  onProgress?.('Parsing destinations...');
-  const destinations = parseDestinations(data.results.destinations, groups);
-
-  onProgress?.('Parsing routing and data flows...');
-  const flows = parseFlows(data.results.routing, sources, destinations);
-
-  onProgress?.('Parsing product adoption...');
-  const products = parseProducts(data.results.products);
-
-  onProgress?.('Parsing volume data...');
-  const volumes = parseVolumes(data.results.volumes);
-
-  const activeSources = sources.filter(s => s.status === 'active');
-  const activeDestinations = destinations.filter(d => d.status === 'active');
-  const uniqueDestTypes = [...new Set(activeDestinations.map(d => d.type))];
+  const telemetry = parseOmniResponse(customerName, data);
 
   onProgress?.('Discovery complete.');
+  return telemetry;
+}
+
+function parseOmniResponse(customerName: string, data: Record<string, unknown>): CustomerTelemetry {
+  const text = extractResponseText(data);
 
   return {
     customerName,
-    groups,
-    sources,
-    destinations,
-    flows,
-    totalDailyIngestGB: volumes.ingest || activeSources.reduce((sum, s) => sum + s.dailyVolumeGB, 0),
-    totalDailyOutgestGB: volumes.outgest || activeDestinations.reduce((sum, d) => sum + d.dailyVolumeGB, 0),
-    destinationCount: activeDestinations.length,
-    sourceCount: activeSources.length,
-    dormantSourceCount: sources.filter(s => s.status === 'dormant').length,
-    dormantDestinationCount: destinations.filter(d => d.status === 'dormant').length,
-    uniqueDestinationTypes: uniqueDestTypes,
-    hasLake: products.hasLake || destinations.some(d => d.type === 'cribl_lake' || d.type === 'lake'),
-    hasSearch: products.hasSearch,
-    hasEdge: products.hasEdge,
-    edgeNodeCount: products.edgeNodeCount,
-    searchDatasets: products.searchDatasets,
-    searchDailyAvg: products.searchDailyAvg,
-    rawDiscovery: data.results,
+    date: new Date().toISOString().split('T')[0],
+
+    streamInBytes: extractNumber(text, /stream[_\s]*in[_\s]*(?:bytes|gb|tb)/i, 'bytes'),
+    streamOutBytes: extractNumber(text, /stream[_\s]*out[_\s]*(?:bytes|gb|tb)/i, 'bytes'),
+    edgeInBytes: extractNumber(text, /edge[_\s]*in[_\s]*(?:bytes|gb|tb)/i, 'bytes'),
+    edgeOutBytes: extractNumber(text, /edge[_\s]*out[_\s]*(?:bytes|gb|tb)/i, 'bytes'),
+
+    sourceCount: extractInt(text, /(\d+)\s*(?:configured\s*)?sources?/i) || extractInt(text, /sources?[:\s]*(\d+)/i),
+    destinationCount: extractInt(text, /(\d+)\s*(?:configured\s*)?destinations?/i) || extractInt(text, /destinations?[:\s]*(\d+)/i),
+    workerGroups: extractInt(text, /(\d+)\s*(?:worker\s*)?groups?/i),
+    maxEdgeNodes: extractInt(text, /(\d+)\s*(?:max\s*)?(?:edge\s*)?nodes?/i),
+    connectedEdgeNodes: extractInt(text, /(\d+)\s*connected\s*(?:edge\s*)?nodes?/i),
+    pipelines: extractInt(text, /(\d+)\s*pipelines?/i),
+    routes: extractInt(text, /(\d+)\s*routes?/i),
+
+    lakeGB: extractFloat(text, /lake[_\s]*(?:gb|storage)[:\s]*([\d,.]+)/i) || extractGBValue(text, /lake.*?([\d,.]+)\s*(?:GB|TB)/i),
+    lakeDatasets: extractInt(text, /(\d+)\s*(?:lake\s*)?datasets?/i),
+    lakeDatasetsParquet: extractInt(text, /(\d+)\s*parquet/i),
+    lakeDatasetsJson: extractInt(text, /(\d+)\s*json/i),
+
+    completedSearches: extractInt(text, /(\d+)\s*completed\s*searches?/i) || extractInt(text, /completed[_\s]*searches[:\s]*(\d+)/i),
+    dispatchedSearches: extractInt(text, /(\d+)\s*dispatched/i),
+    erroredSearches: extractInt(text, /(\d+)\s*errored/i),
+    searchDatasets: extractInt(text, /(\d+)\s*search\s*datasets?/i),
+
+    searchCreditsUsed: extractFloat(text, /search[_\s]*credits?[:\s]*([\d,.]+)/i),
+    lakeCreditsUsed: extractFloat(text, /lake[_\s]*credits?[:\s]*([\d,.]+)/i),
+
+    adoptCloudStream: /adopt.*cloud.*stream.*(?:true|yes|active)/i.test(text) || /stream.*(?:active|adopted|in use)/i.test(text),
+    adoptCloudEdge: /adopt.*cloud.*edge.*(?:true|yes|active)/i.test(text) || /edge.*(?:active|adopted|in use)/i.test(text),
+    adoptOnpremStream: /adopt.*onprem.*stream.*(?:true|yes|active)/i.test(text),
+    adoptOnpremEdge: /adopt.*onprem.*edge.*(?:true|yes|active)/i.test(text),
+    adoptLake: /adopt.*lake.*(?:true|yes|active)/i.test(text) || /lake.*(?:active|adopted|in use)/i.test(text),
+    adoptSearch: /adopt.*search.*(?:true|yes|active)/i.test(text) || /search.*(?:active|adopted|in use)/i.test(text),
+    productAdoptionCount: extractInt(text, /product[_\s]*adoption[_\s]*count[:\s]*(\d+)/i) || countAdoption(text),
+    productAdoptionGroup: extractField(text, /product[_\s]*adoption[_\s]*group[:\s]*["']?([^"'\n,]+)/i) || 'unknown',
+
+    rawResponse: data,
   };
 }
 
-function getResponseText(result: unknown): string {
-  if (!result) return '';
-  if (typeof result === 'string') return result;
-  const r = result as Record<string, unknown>;
-  if (r.error) return '';
-  if (typeof r.text === 'string') return r.text;
-  if (typeof r.message === 'string') return r.message;
-  return JSON.stringify(result);
-}
+function extractResponseText(data: unknown): string {
+  if (typeof data === 'string') return data;
+  if (!data || typeof data !== 'object') return '';
 
-function parseGroups(raw: unknown): CriblGroup[] {
-  const text = getResponseText(raw);
-  if (!text) return [];
+  const obj = data as Record<string, unknown>;
 
-  const groups: CriblGroup[] = [];
-  const lines = text.split('\n');
+  // Handle various response shapes from Glean chat API
+  if (typeof obj.text === 'string') return obj.text;
+  if (typeof obj.message === 'string') return obj.message;
+  if (typeof obj.answer === 'string') return obj.answer;
 
-  for (const line of lines) {
-    const trimmed = line.trim().replace(/^[-*•]\s*/, '');
-    if (!trimmed || trimmed.length < 2) continue;
-
-    const isFleet = /fleet|edge/i.test(trimmed);
-    const nameMatch = trimmed.match(/^["']?([^"':,\n]+?)["']?\s*[-–:]/);
-    const name = nameMatch ? nameMatch[1].trim() : trimmed.split(/\s*[-–:(]/)[0].trim();
-
-    if (name && name.length > 1 && name.length < 100) {
-      groups.push({
-        id: name.toLowerCase().replace(/\s+/g, '_'),
-        name,
-        isFleet,
-        product: isFleet ? 'edge' : 'stream',
-      });
+  // Nested results from our discovery endpoint
+  if (obj.results && typeof obj.results === 'object') {
+    const parts: string[] = [];
+    for (const val of Object.values(obj.results as Record<string, unknown>)) {
+      parts.push(extractResponseText(val));
     }
+    return parts.join('\n');
   }
 
-  return groups;
+  // Array of messages
+  if (Array.isArray(obj.messages)) {
+    return obj.messages.map((m: unknown) => extractResponseText(m)).join('\n');
+  }
+
+  return JSON.stringify(data);
 }
 
-function parseSources(raw: unknown, groups: CriblGroup[]): TelemetrySource[] {
-  const text = getResponseText(raw);
-  if (!text) return [];
+function extractNumber(text: string, pattern: RegExp, unit: 'bytes' | 'gb' = 'bytes'): number {
+  const match = text.match(pattern);
+  if (!match) return 0;
 
-  const sources: TelemetrySource[] = [];
-  const lines = text.split('\n');
-  const defaultGroup = groups[0]?.id || 'default';
+  // Look for a number near the match
+  const context = text.slice(Math.max(0, (match.index || 0) - 50), (match.index || 0) + match[0].length + 50);
+  const numMatch = context.match(/([\d,]+(?:\.\d+)?)\s*(?:GB|TB|bytes|MB)?/i);
+  if (!numMatch) return 0;
 
-  for (const line of lines) {
-    const trimmed = line.trim().replace(/^[-*•]\s*/, '');
-    if (!trimmed || trimmed.length < 3) continue;
+  let value = parseFloat(numMatch[1].replace(/,/g, ''));
 
-    const typeMatch = trimmed.match(/\b(syslog|splunk_hec|http|tcp|udp|kafka|kinesis|s3|azure_blob|file_monitor|windows_event_logs|crowdstrike|palo_alto|opentelemetry|datadog|elastic|prometheus|statsd)\b/i);
-    if (!typeMatch) continue;
-
-    const type = typeMatch[1].toLowerCase();
-    const nameMatch = trimmed.match(/^["']?([^"':,\n]+?)["']?\s*[-–:(/]/);
-    const name = nameMatch ? nameMatch[1].trim() : type;
-
-    const volumeMatch = trimmed.match(/([\d.]+)\s*(?:GB|gb)/);
-    const dailyVolumeGB = volumeMatch ? parseFloat(volumeMatch[1]) : 0;
-
-    const isDisabled = /disabled|inactive|dormant/i.test(trimmed);
-    const groupMatch = trimmed.match(/group[:\s]+["']?([^"',\n]+)/i);
-    const group = groupMatch ? groupMatch[1].trim().toLowerCase().replace(/\s+/g, '_') : defaultGroup;
-
-    const isFleetGroup = groups.find(g => g.id === group)?.isFleet ?? false;
-
-    sources.push({
-      id: `${group}:${name}`,
-      name,
-      type,
-      group,
-      product: isFleetGroup ? 'edge' : 'stream',
-      dailyVolumeGB,
-      eventsPerDay: 0,
-      status: isDisabled ? 'dormant' : 'active',
-      dataCategory: classifySourceCategory(type, name),
-    });
+  if (unit === 'bytes') {
+    if (/TB/i.test(numMatch[0])) value *= 1099511627776;
+    else if (/GB/i.test(numMatch[0])) value *= 1073741824;
+    else if (/MB/i.test(numMatch[0])) value *= 1048576;
   }
 
-  return sources;
+  return value;
 }
 
-function parseDestinations(raw: unknown, groups: CriblGroup[]): TelemetryDestination[] {
-  const text = getResponseText(raw);
-  if (!text) return [];
-
-  const destinations: TelemetryDestination[] = [];
-  const lines = text.split('\n');
-  const defaultGroup = groups[0]?.id || 'default';
-
-  for (const line of lines) {
-    const trimmed = line.trim().replace(/^[-*•]\s*/, '');
-    if (!trimmed || trimmed.length < 3) continue;
-
-    const typeMatch = trimmed.match(/\b(splunk|splunk_lb|elastic|s3|azure_blob|gcs|kafka|kinesis|syslog|http|newrelic|datadog|cribl_lake|lake|google_chronicle|microsoft_sentinel|sumo_logic|snowflake)\b/i);
-    if (!typeMatch) continue;
-
-    const type = typeMatch[1].toLowerCase();
-    const nameMatch = trimmed.match(/^["']?([^"':,\n]+?)["']?\s*[-–:(/]/);
-    const name = nameMatch ? nameMatch[1].trim() : type;
-
-    const volumeMatch = trimmed.match(/([\d.]+)\s*(?:GB|gb)/);
-    const dailyVolumeGB = volumeMatch ? parseFloat(volumeMatch[1]) : 0;
-
-    const isDisabled = /disabled|inactive|dormant/i.test(trimmed);
-    const hasPQ = /persistent.?queue|pq.?enabled|pq:\s*true/i.test(trimmed);
-    const groupMatch = trimmed.match(/group[:\s]+["']?([^"',\n]+)/i);
-    const group = groupMatch ? groupMatch[1].trim().toLowerCase().replace(/\s+/g, '_') : defaultGroup;
-
-    const isFleetGroup = groups.find(g => g.id === group)?.isFleet ?? false;
-
-    destinations.push({
-      id: `${group}:${name}`,
-      name,
-      type,
-      group,
-      product: isFleetGroup ? 'edge' : 'stream',
-      dailyVolumeGB,
-      status: isDisabled ? 'dormant' : 'active',
-      pqEnabled: hasPQ,
-      hasBackpressure: false,
-    });
-  }
-
-  return destinations;
+function extractInt(text: string, pattern: RegExp): number {
+  const match = text.match(pattern);
+  if (!match) return 0;
+  const numStr = match[1] || match[0];
+  return parseInt(numStr.replace(/,/g, ''), 10) || 0;
 }
 
-function parseFlows(raw: unknown, sources: TelemetrySource[], destinations: TelemetryDestination[]): DataFlow[] {
-  const text = getResponseText(raw);
-  if (!text) return [];
-
-  const flows: DataFlow[] = [];
-  const lines = text.split('\n');
-
-  for (const line of lines) {
-    const arrowMatch = line.match(/(.+?)\s*(?:->|→|-->)\s*(?:(.+?)\s*(?:->|→|-->)\s*)?(.+)/);
-    if (!arrowMatch) continue;
-
-    const sourceName = arrowMatch[1].trim().replace(/^[-*•]\s*/, '');
-    const pipelineName = arrowMatch[2]?.trim();
-    const destName = arrowMatch[3].trim();
-
-    const source = sources.find(s => s.name.toLowerCase().includes(sourceName.toLowerCase()));
-    const dest = destinations.find(d => d.name.toLowerCase().includes(destName.toLowerCase()));
-
-    flows.push({
-      sourceId: source?.id || sourceName,
-      sourceName: source?.name || sourceName,
-      sourceType: source?.type || 'unknown',
-      pipelineId: pipelineName,
-      pipelineName,
-      destinationId: dest?.id || destName,
-      destinationName: dest?.name || destName,
-      destinationType: dest?.type || 'unknown',
-      group: source?.group || 'default',
-    });
-  }
-
-  return flows;
+function extractFloat(text: string, pattern: RegExp): number {
+  const match = text.match(pattern);
+  if (!match) return 0;
+  const numStr = match[1] || match[0];
+  return parseFloat(numStr.replace(/,/g, '')) || 0;
 }
 
-function parseProducts(raw: unknown): {
-  hasLake: boolean;
-  hasSearch: boolean;
-  hasEdge: boolean;
-  edgeNodeCount: number;
-  searchDatasets: string[];
-  searchDailyAvg: number;
-} {
-  const text = getResponseText(raw);
-
-  const hasLake = /lake.*(active|flowing|in use|configured|yes)/i.test(text);
-  const hasSearch = /search.*(active|configured|in use|yes|\d+ dataset)/i.test(text);
-  const hasEdge = /edge.*(active|deployed|yes|\d+ node)/i.test(text);
-
-  const edgeMatch = text.match(/(\d+)\s*(?:active\s*)?(?:edge\s*)?nodes?/i);
-  const edgeNodeCount = edgeMatch ? parseInt(edgeMatch[1]) : 0;
-
-  const searchDatasetsMatch = text.match(/(\d+)\s*datasets?/i);
-  const searchDatasets: string[] = [];
-  if (searchDatasetsMatch) {
-    const count = parseInt(searchDatasetsMatch[1]);
-    for (let i = 0; i < count; i++) searchDatasets.push(`dataset_${i + 1}`);
-  }
-
-  const searchAvgMatch = text.match(/([\d.]+)\s*(?:searches?\s*(?:per|\/)\s*day|daily)/i);
-  const searchDailyAvg = searchAvgMatch ? parseFloat(searchAvgMatch[1]) : 0;
-
-  return { hasLake, hasSearch, hasEdge, edgeNodeCount, searchDatasets, searchDailyAvg };
+function extractGBValue(text: string, pattern: RegExp): number {
+  const match = text.match(pattern);
+  if (!match) return 0;
+  let value = parseFloat(match[1].replace(/,/g, ''));
+  if (/TB/i.test(match[0])) value *= 1000;
+  return value;
 }
 
-function parseVolumes(raw: unknown): { ingest: number; outgest: number } {
-  const text = getResponseText(raw);
-
-  const ingestMatch = text.match(/(?:ingest|ingestion|total\s*(?:daily)?\s*ingest)[:\s]*([\d,.]+)\s*(?:GB|TB)/i);
-  const outgestMatch = text.match(/(?:outgest|egress|outbound)[:\s]*([\d,.]+)\s*(?:GB|TB)/i);
-
-  let ingest = 0;
-  let outgest = 0;
-
-  if (ingestMatch) {
-    ingest = parseFloat(ingestMatch[1].replace(/,/g, ''));
-    if (/TB/i.test(ingestMatch[0])) ingest *= 1000;
-  }
-
-  if (outgestMatch) {
-    outgest = parseFloat(outgestMatch[1].replace(/,/g, ''));
-    if (/TB/i.test(outgestMatch[0])) outgest *= 1000;
-  }
-
-  return { ingest, outgest };
+function extractField(text: string, pattern: RegExp): string {
+  const match = text.match(pattern);
+  return match ? match[1].trim() : '';
 }
 
-const SECURITY_TYPES = [
-  'syslog', 'crowdstrike', 'palo_alto', 'fortinet', 'checkpoint',
-  'cisco_asa', 'wineventlog', 'windows_event_logs', 'carbon_black',
-  'sentinelone', 'microsoft_defender', 'okta', 'duo', 'aws_cloudtrail',
-];
-
-const OBSERVABILITY_TYPES = [
-  'splunk_hec', 'http', 'elastic', 'prometheus', 'statsd', 'graphite',
-  'opentelemetry', 'datadog', 'newrelic', 'kinesis', 'kafka',
-  'cloudwatch', 'azure_monitor',
-];
-
-function classifySourceCategory(type: string, name: string): TelemetrySource['dataCategory'] {
-  const combined = `${type} ${name}`.toLowerCase();
-  const isSecurity = SECURITY_TYPES.some(t => combined.includes(t));
-  const isObservability = OBSERVABILITY_TYPES.some(t => combined.includes(t));
-
-  if (isSecurity && isObservability) return 'both';
-  if (isSecurity) return 'security';
-  if (isObservability) return 'observability';
-  return 'unknown';
+function countAdoption(text: string): number {
+  let count = 0;
+  if (/stream.*(?:active|adopted|in use)/i.test(text)) count++;
+  if (/edge.*(?:active|adopted|in use)/i.test(text)) count++;
+  if (/lake.*(?:active|adopted|in use)/i.test(text)) count++;
+  if (/search.*(?:active|adopted|in use)/i.test(text)) count++;
+  return count;
 }

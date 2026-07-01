@@ -1,24 +1,14 @@
-import { useMemo } from 'react';
-import { Map, DollarSign, Zap, ArrowRight, CheckCircle2, Circle, Clock, Calendar, Timer } from 'lucide-react';
+import { DollarSign, Zap, ArrowRight, Clock, Calendar, Timer } from 'lucide-react';
 import Card from '../components/Card';
-import { formatBytes } from '../utils/analysis';
-import { generateSourceUseCaseMap, generateCostModel, identifyQuickWins } from '../utils/opportunities';
-import type { ArchitectureSnapshot } from '../types';
+import { formatGB } from '../utils/maturity';
+import { generateCostModel } from '../utils/opportunities';
+import type { MaturitySnapshot } from '../types';
 
 interface Props {
-  snapshot: ArchitectureSnapshot | null;
+  snapshot: MaturitySnapshot | null;
 }
 
 export default function OpportunitiesPage({ snapshot }: Props) {
-  const { useCaseMap, costModel, quickWins } = useMemo(() => {
-    if (!snapshot) return { useCaseMap: [], costModel: null, quickWins: [] };
-    return {
-      useCaseMap: generateSourceUseCaseMap(snapshot),
-      costModel: generateCostModel(snapshot),
-      quickWins: identifyQuickWins(snapshot),
-    };
-  }, [snapshot]);
-
   if (!snapshot) {
     return (
       <div className="page">
@@ -30,22 +20,24 @@ export default function OpportunitiesPage({ snapshot }: Props) {
     );
   }
 
+  const { quickWins, customer } = snapshot;
+  const costModel = generateCostModel(customer);
+
   return (
     <div className="page">
       <div className="page-header">
         <h1>Opportunities</h1>
         <p className="page-description">
-          Quick wins you can act on immediately, per-source use case mapping, and the cost
-          impact of evolving to a multi-destination tiered architecture.
+          Quick wins for {customer.customerName} that can be acted on immediately,
+          plus the cost impact of evolving to a tiered architecture.
         </p>
       </div>
 
-      {/* Quick Wins */}
       {quickWins.length > 0 && (
         <>
           <div className="section-header">
             <h2><Zap size={22} style={{ color: '#f59e0b' }} /> Quick Wins</h2>
-            <p>Low-effort changes that unlock immediate value — most take minutes to implement.</p>
+            <p>Low-effort changes that unlock immediate value.</p>
           </div>
 
           <div className="quick-wins-list">
@@ -77,8 +69,7 @@ export default function OpportunitiesPage({ snapshot }: Props) {
         </>
       )}
 
-      {/* Cost Model */}
-      {costModel && costModel.currentDailyGB > 0 && (
+      {costModel.currentDailyGB > 0 && (
         <>
           <div className="section-header mt-4">
             <h2><DollarSign size={22} style={{ color: '#10b981' }} /> Cost/Value Model</h2>
@@ -93,7 +84,7 @@ export default function OpportunitiesPage({ snapshot }: Props) {
               <div className="cost-breakdown">
                 <div className="cost-line">
                   <span>Daily Volume</span>
-                  <span>{formatBytes(costModel.currentDailyGB)}</span>
+                  <span>{formatGB(costModel.currentDailyGB)}</span>
                 </div>
                 <div className="cost-line">
                   <span>Destinations</span>
@@ -109,15 +100,15 @@ export default function OpportunitiesPage({ snapshot }: Props) {
               <div className="cost-breakdown">
                 <div className="cost-line">
                   <span>SIEM (Hot)</span>
-                  <span>{formatBytes(costModel.proposedSIEMDailyGB)}/day</span>
+                  <span>{formatGB(costModel.proposedSIEMDailyGB)}/day</span>
                 </div>
                 <div className="cost-line">
                   <span>Lake (Warm)</span>
-                  <span>{formatBytes(costModel.proposedLakeDailyGB)}/day</span>
+                  <span>{formatGB(costModel.proposedLakeDailyGB)}/day</span>
                 </div>
                 <div className="cost-line">
                   <span>Archive (Cold)</span>
-                  <span>{formatBytes(costModel.proposedArchiveDailyGB)}/day</span>
+                  <span>{formatGB(costModel.proposedArchiveDailyGB)}/day</span>
                 </div>
               </div>
             </Card>
@@ -146,54 +137,6 @@ export default function OpportunitiesPage({ snapshot }: Props) {
               ))}
             </ul>
           </Card>
-        </>
-      )}
-
-      {/* Per-Source Use Case Map */}
-      {useCaseMap.length > 0 && (
-        <>
-          <div className="section-header mt-4">
-            <h2><Map size={22} style={{ color: '#8b5cf6' }} /> Per-Source Use Case Map</h2>
-            <p>What's possible with each active data source across the Cribl product suite.</p>
-          </div>
-
-          <div className="use-case-list">
-            {useCaseMap.map(source => (
-              <Card key={source.sourceId} className="use-case-card">
-                <div className="use-case-header">
-                  <div>
-                    <h3>{source.sourceName}</h3>
-                    <span className="text-muted">{source.sourceType} • {source.category}</span>
-                  </div>
-                  <div className="use-case-counts">
-                    <span className="badge badge-success">{source.currentState.length} active</span>
-                    <span className="badge badge-info">{source.possibleStates.length} possible</span>
-                  </div>
-                </div>
-
-                <div className="use-case-grid">
-                  {source.currentState.map((uc, i) => (
-                    <div key={i} className="use-case-item active">
-                      <CheckCircle2 size={14} style={{ color: '#10b981' }} />
-                      <div>
-                        <div className="use-case-label">{uc.label}</div>
-                        <div className="use-case-desc">{uc.useCase}</div>
-                      </div>
-                    </div>
-                  ))}
-                  {source.possibleStates.map((uc, i) => (
-                    <div key={i} className="use-case-item possible">
-                      <Circle size={14} style={{ color: '#8b5cf6' }} />
-                      <div>
-                        <div className="use-case-label">{uc.label}</div>
-                        <div className="use-case-desc">{uc.useCase}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            ))}
-          </div>
         </>
       )}
     </div>

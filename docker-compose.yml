@@ -2,11 +2,15 @@ services:
   app:
     build: .
     ports:
-      - "3001:3001"
+      - "3030:3030"
     environment:
       - GLEAN_BASE_URL=${GLEAN_BASE_URL:-https://cribl-be.glean.com}
-      - GLEAN_API_TOKEN=${GLEAN_API_TOKEN}
-      - PORT=3001
+      - APP_URL=${APP_URL:-http://localhost:3030}
+      - PORT=3030
+      - NODE_ENV=production
     volumes:
-      - ./dist:/app/dist
+      - app-data:/app/data
     restart: unless-stopped
+
+volumes:
+  app-data:

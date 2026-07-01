@@ -1,69 +1,100 @@
-export interface CriblGroup {
-  id: string;
-  name?: string;
-  description?: string;
-  isFleet?: boolean;
-  workerCount?: number;
-  configVersion?: string;
-  product?: string;
-}
-
-export interface TelemetrySource {
-  id: string;
-  name: string;
-  type: string;
-  group: string;
-  product: 'stream' | 'edge';
-  dailyVolumeGB: number;
-  eventsPerDay: number;
-  status: 'active' | 'dormant' | 'error';
-  dataCategory: 'security' | 'observability' | 'both' | 'unknown';
-}
-
-export interface TelemetryDestination {
-  id: string;
-  name: string;
-  type: string;
-  group: string;
-  product: 'stream' | 'edge';
-  dailyVolumeGB: number;
-  status: 'active' | 'dormant' | 'error';
-  pqEnabled: boolean;
-  hasBackpressure: boolean;
-}
-
-export interface DataFlow {
-  sourceId: string;
-  sourceName: string;
-  sourceType: string;
-  pipelineId?: string;
-  pipelineName?: string;
-  destinationId: string;
-  destinationName: string;
-  destinationType: string;
-  group: string;
-}
-
-export interface ArchitectureSnapshot {
+export interface CustomerTelemetry {
   customerName: string;
-  groups: CriblGroup[];
-  sources: TelemetrySource[];
-  destinations: TelemetryDestination[];
-  flows: DataFlow[];
+  date: string;
+
+  // Volume metrics (daily, in bytes — display in GB/TB)
+  streamInBytes: number;
+  streamOutBytes: number;
+  edgeInBytes: number;
+  edgeOutBytes: number;
+
+  // Infrastructure counts
+  sourceCount: number;
+  destinationCount: number;
+  workerGroups: number;
+  maxEdgeNodes: number;
+  connectedEdgeNodes: number;
+  pipelines: number;
+  routes: number;
+
+  // Lake metrics
+  lakeGB: number;
+  lakeDatasets: number;
+  lakeDatasetsParquet: number;
+  lakeDatasetsJson: number;
+
+  // Search metrics
+  completedSearches: number;
+  dispatchedSearches: number;
+  erroredSearches: number;
+  searchDatasets: number;
+
+  // Credit usage
+  searchCreditsUsed: number;
+  lakeCreditsUsed: number;
+
+  // Adoption flags (derived from adoption model)
+  adoptCloudStream: boolean;
+  adoptCloudEdge: boolean;
+  adoptOnpremStream: boolean;
+  adoptOnpremEdge: boolean;
+  adoptLake: boolean;
+  adoptSearch: boolean;
+  productAdoptionCount: number;
+  productAdoptionGroup: string;
+
+  // Raw response for debugging
+  rawResponse?: Record<string, unknown>;
+}
+
+export interface MaturitySnapshot {
+  customer: CustomerTelemetry;
+  maturityLevel: number;
+  maturityLabel: string;
+  maturityTitle: string;
+  signals: MaturitySignal[];
+  risks: Risk[];
+  recommendations: Recommendation[];
+  quickWins: QuickWin[];
+  nextLevel: MaturityLevelDef | null;
+  gapsToNext: string[];
+  artOfThePossible: ArtOfThePossible[];
+  volumeSummary: VolumeSummary;
+}
+
+export interface VolumeSummary {
   totalDailyIngestGB: number;
   totalDailyOutgestGB: number;
-  destinationCount: number;
-  sourceCount: number;
-  dormantSourceCount: number;
-  dormantDestinationCount: number;
-  uniqueDestinationTypes: string[];
-  hasLake: boolean;
-  hasSearch: boolean;
-  hasEdge: boolean;
-  edgeNodeCount: number;
-  searchDatasets: string[];
-  searchDailyAvg: number;
-  rawDiscovery?: Record<string, unknown>;
+  streamInGB: number;
+  streamOutGB: number;
+  edgeInGB: number;
+  edgeOutGB: number;
+  lakeStorageGB: number;
+  searchesPerDay: number;
+}
+
+export interface MaturitySignal {
+  indicator: string;
+  present: boolean;
+  levelImplication: number;
+  detail?: string;
+}
+
+export interface MaturityLevelDef {
+  level: number;
+  label: string;
+  title: string;
+  description: string;
+  characteristics: string[];
+  capabilities: string[];
+}
+
+export interface ArtOfThePossible {
+  title: string;
+  description: string;
+  level: number;
+  category: 'multi-destination' | 'search' | 'lake' | 'edge' | 'tiering' | 'enrichment' | 'composable';
+  businessValue: string;
 }
 
 export type RiskSeverity = 'high' | 'medium' | 'low';
@@ -73,7 +104,7 @@ export interface Risk {
   title: string;
   description: string;
   severity: RiskSeverity;
-  category: 'single-destination' | 'cost' | 'flexibility' | 'investigation' | 'retention' | 'resilience' | 'upgrade';
+  category: string;
   evidence: string;
   recommendation: string;
 }
@@ -85,26 +116,49 @@ export interface Recommendation {
   priority: 'immediate' | 'short-term' | 'long-term';
   effort: 'low' | 'medium' | 'high';
   impact: 'high' | 'medium' | 'low';
-  category: 'multi-destination' | 'data-tiering' | 'edge-deployment' | 'lake-adoption' | 'search-adoption' | 'optimization' | 'resilience';
+  category: string;
   steps: string[];
-  relatedRisks: string[];
 }
 
-export interface TieringRecommendation {
-  sourceType: string;
-  sourceName: string;
-  currentDestination: string;
-  recommendedTier0: string;
-  recommendedTier1: string;
-  recommendedTier2: string;
-  tier0Retention: string;
-  tier1Retention: string;
-  tier2Retention: string;
-  rationale: string;
+export interface QuickWin {
+  id: string;
+  title: string;
+  description: string;
+  effort: 'minutes' | 'hours' | 'days';
+  impact: 'high' | 'medium' | 'low';
+  action: string;
+  evidence: string;
+}
+
+export interface ValueLineItem {
+  id: string;
+  category: 'cost-reduction' | 'operational' | 'flexibility' | 'risk-mitigation';
+  title: string;
+  description: string;
+  annualValue: number;
+  evidence: string;
+}
+
+export interface ValueProjection {
+  id: string;
+  targetLevel: number;
+  title: string;
+  description: string;
+  additionalAnnualValue: number;
+  requirement: string;
+}
+
+export interface CustomerValue {
+  costPerGBPerDay: number;
+  currentAnnualValue: number;
+  projectedAnnualValue: number;
+  valueLineItems: ValueLineItem[];
+  projections: ValueProjection[];
 }
 
 export interface ExecutiveSummary {
   currentState: string;
+  maturityLevel: string;
   identifiedRisks: string[];
   recommendedEvolution: string[];
   positiveOutcomes: string[];
@@ -114,5 +168,3 @@ export interface ExecutiveSummary {
     timeline: string;
   }>;
 }
-
-export type AppPhase = 'loading' | 'discovery' | 'snapshot' | 'analysis' | 'recommendations' | 'deliverables';

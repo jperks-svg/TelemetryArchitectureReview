@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { Compass, BarChart3, AlertTriangle, Lightbulb, Zap, TrendingUp, FileText } from 'lucide-react';
+import { Compass, BarChart3, AlertTriangle, Lightbulb, Zap, TrendingUp, FileText, BadgeDollarSign } from 'lucide-react';
 
 const NAV_ITEMS = [
   { to: '/', icon: Compass, label: 'Discovery' },
@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { to: '/risks', icon: AlertTriangle, label: 'Risk Analysis' },
   { to: '/recommendations', icon: Lightbulb, label: 'Recommendations' },
   { to: '/opportunities', icon: Zap, label: 'Opportunities' },
+  { to: '/value', icon: BadgeDollarSign, label: 'Customer Value' },
   { to: '/maturity', icon: TrendingUp, label: 'Maturity & Possible' },
   { to: '/deliverables', icon: FileText, label: 'Deliverables' },
 ];

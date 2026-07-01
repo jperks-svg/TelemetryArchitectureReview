@@ -1,11 +1,9 @@
-import { useMemo } from 'react';
 import { Lightbulb, ArrowRight, Clock, Zap, Target } from 'lucide-react';
 import Card from '../components/Card';
-import { identifyRisks, generateRecommendations, generateTieringRecommendations } from '../utils/analysis';
-import type { ArchitectureSnapshot } from '../types';
+import type { MaturitySnapshot } from '../types';
 
 interface Props {
-  snapshot: ArchitectureSnapshot | null;
+  snapshot: MaturitySnapshot | null;
 }
 
 const PRIORITY_ICONS = {
@@ -21,15 +19,6 @@ const PRIORITY_LABELS = {
 };
 
 export default function RecommendationsPage({ snapshot }: Props) {
-  const { recommendations, tieringRecs } = useMemo(() => {
-    if (!snapshot) return { recommendations: [], tieringRecs: [] };
-    const risks = identifyRisks(snapshot);
-    return {
-      recommendations: generateRecommendations(snapshot, risks),
-      tieringRecs: generateTieringRecommendations(snapshot),
-    };
-  }, [snapshot]);
-
   if (!snapshot) {
     return (
       <div className="page">
@@ -41,6 +30,7 @@ export default function RecommendationsPage({ snapshot }: Props) {
     );
   }
 
+  const { recommendations } = snapshot;
   const immediate = recommendations.filter(r => r.priority === 'immediate');
   const shortTerm = recommendations.filter(r => r.priority === 'short-term');
   const longTerm = recommendations.filter(r => r.priority === 'long-term');
@@ -50,8 +40,8 @@ export default function RecommendationsPage({ snapshot }: Props) {
       <div className="page-header">
         <h1>Strategic Recommendations</h1>
         <p className="page-description">
-          Prioritized recommendations to evolve your telemetry architecture toward a multi-destination,
-          tiered, and resilient model — based on your current state and identified risks.
+          Prioritized recommendations to evolve {snapshot.customer.customerName}'s telemetry architecture
+          from {snapshot.maturityLabel} toward the next maturity level.
         </p>
       </div>
 
@@ -60,7 +50,7 @@ export default function RecommendationsPage({ snapshot }: Props) {
           <div className="empty-state">
             <Lightbulb size={32} />
             <h3>Architecture Looks Good</h3>
-            <p>No major recommendations at this time. Review the tiering table below for optimization opportunities.</p>
+            <p>No major recommendations at this time. Architecture is well-positioned at current maturity level.</p>
           </div>
         </Card>
       ) : (
@@ -104,49 +94,6 @@ export default function RecommendationsPage({ snapshot }: Props) {
             );
           })}
         </>
-      )}
-
-      {tieringRecs.length > 0 && (
-        <Card title="Data Tiering Recommendations" subtitle="Per-source routing and retention strategy" className="mt-4">
-          <div className="table-scroll">
-            <table className="data-table data-table-full tiering-table">
-              <thead>
-                <tr>
-                  <th>Source</th>
-                  <th>Current Destination</th>
-                  <th>Tier 0 (Hot/SIEM)</th>
-                  <th>Tier 1 (Warm/Lake)</th>
-                  <th>Tier 2 (Cold/Archive)</th>
-                  <th>Rationale</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tieringRecs.slice(0, 20).map((rec, i) => (
-                  <tr key={i}>
-                    <td>
-                      <strong>{rec.sourceName}</strong>
-                      <br /><span className="text-muted">{rec.sourceType}</span>
-                    </td>
-                    <td>{rec.currentDestination}</td>
-                    <td>
-                      {rec.recommendedTier0}
-                      <br /><span className="text-muted">{rec.tier0Retention}</span>
-                    </td>
-                    <td>
-                      {rec.recommendedTier1}
-                      <br /><span className="text-muted">{rec.tier1Retention}</span>
-                    </td>
-                    <td>
-                      {rec.recommendedTier2}
-                      <br /><span className="text-muted">{rec.tier2Retention}</span>
-                    </td>
-                    <td className="rationale-cell">{rec.rationale}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
       )}
     </div>
   );
